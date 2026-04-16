@@ -27,6 +27,7 @@ PYTHONPATH=src python3 -m citizenship_search.web
 Then open `http://127.0.0.1:8000` in your browser.
 
 The web UI supports uploading plain-text documents (`.txt`, `.md`, `.csv`) so they are included as evidence sources. Non-English uploads are preserved and added to translation records.
+Each generated report is also saved under `data/cases/<timestamp>-<subject>/` with a `case.json` snapshot and any uploaded source files under `documents/`.
 
 ## Run tests
 

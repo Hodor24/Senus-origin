@@ -15,6 +15,7 @@ from citizenship_search.app import (
     case_from_form,
     seed_case,
 )
+from citizenship_search.storage import save_case_snapshot
 
 
 def _join_lines(values: list[str]) -> str:
@@ -82,6 +83,7 @@ def render_report_sections(report: dict) -> str:
     uploads = report.get("uploaded_documents", [])
     translations = report.get("translations", [])
     archive_requests = report.get("archive_requests", [])
+    storage = report.get("storage", {})
 
     claims_rows = [
         [
@@ -135,6 +137,8 @@ def render_report_sections(report: dict) -> str:
       <h2>Discovery Summary</h2>
       <p><strong>Subject:</strong> {_esc(str(report.get("subject", "")))}</p>
       <p><strong>Query:</strong> {_esc(str(report.get("query", "")))}</p>
+      <p><strong>Saved case:</strong> {_esc(str(storage.get("case_dir", "Not saved yet")))}</p>
+      <p><strong>Snapshot file:</strong> {_esc(str(storage.get("snapshot_path", "Not saved yet")))}</p>
       <h3>Query Hits</h3>
       <p><strong>Aliases:</strong></p>
       {_render_list([str(item) for item in query_hits.get("aliases", [])])}
@@ -283,6 +287,7 @@ class AppHandler(BaseHTTPRequestHandler):
             uploaded_summary = apply_uploaded_documents(case_file, uploaded_docs)
             report = build_discovery_report(case_file, form["query"])
             report["uploaded_documents"] = uploaded_summary
+            report["storage"] = save_case_snapshot(case_file, report, uploaded_docs)
             self._send_html(render_page(form, report=report))
         except Exception as exc:  # pragma: no cover - defensive UI path
             self._send_html(render_page(form, error=str(exc)), status=HTTPStatus.BAD_REQUEST)

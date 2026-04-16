@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from citizenship_search.app import (
     apply_uploaded_documents,
     attach_translation,
@@ -5,6 +7,7 @@ from citizenship_search.app import (
     case_from_form,
     seed_case,
 )
+from citizenship_search.storage import save_case_snapshot
 
 
 def test_seed_case_has_core_claims() -> None:
@@ -67,3 +70,16 @@ def test_uploaded_documents_create_claims_and_translations() -> None:
     assert summary
     assert any(claim.field_name == "uploaded_document" for claim in case_file.claims)
     assert case_file.translations
+
+
+def test_save_case_snapshot_writes_files(tmp_path) -> None:
+    case_file = seed_case()
+    report = build_discovery_report(case_file, "Roman Senus Stryj 1957")
+    result = save_case_snapshot(
+        case_file,
+        report,
+        uploaded_docs=[{"filename": "record.txt", "text": "example text"}],
+        base_dir=str(tmp_path),
+    )
+    assert Path(result["snapshot_path"]).exists()
+    assert Path(result["documents_dir"], "record.txt").exists()
