@@ -138,6 +138,7 @@ def render_report_sections(report: dict) -> str:
     translations = report.get("translations", [])
     archive_requests = report.get("archive_requests", [])
     storage = report.get("storage", {})
+    bundle_preview = storage.get("bundle_md_preview", "")
 
     claims_rows = [
         [
@@ -197,6 +198,7 @@ def render_report_sections(report: dict) -> str:
       <p><strong>Saved case:</strong> {_esc(str(storage.get("case_dir", "Not saved yet")))}</p>
       <p><strong>Snapshot file:</strong> {_esc(str(storage.get("snapshot_path", "Not saved yet")))}</p>
       <p><strong>Evidence bundle:</strong> {_esc(str(storage.get("bundle_md_path", "Not generated yet")))}</p>
+      {"<h3>Evidence Bundle Preview</h3><pre>"+_esc(bundle_preview)+"</pre>" if bundle_preview else ""}
       <h3>Query Hits</h3>
       <p><strong>Aliases:</strong></p>
       {_render_list([str(item) for item in query_hits.get("aliases", [])])}
@@ -342,6 +344,23 @@ class AppHandler(BaseHTTPRequestHandler):
                 payload = load_case_snapshot(case_id)
                 form = {**form, **form_state_from_snapshot(payload)}
                 report = payload.get("report")
+                # Compute storage paths and include a markdown preview.
+                # This avoids needing to store non-JSON fields in the snapshot.
+                case_dir = f"data/cases/{case_id}"
+                bundle_md_path = f"{case_dir}/evidence_bundle.md"
+                snapshot_path = f"{case_dir}/case.json"
+                bundle_preview = ""
+                try:
+                    bundle_preview = open(bundle_md_path, "r", encoding="utf-8").read()
+                except OSError:
+                    bundle_preview = ""
+                if isinstance(report, dict):
+                    report["storage"] = {
+                        "case_dir": case_dir,
+                        "snapshot_path": snapshot_path,
+                        "bundle_md_path": bundle_md_path,
+                        "bundle_md_preview": bundle_preview[:8000],
+                    }
             except Exception as exc:  # pragma: no cover
                 body = render_page(form, error=str(exc), saved_cases=saved_cases)
                 self._send_html(body, status=HTTPStatus.BAD_REQUEST)

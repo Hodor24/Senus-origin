@@ -66,12 +66,19 @@ def save_case_snapshot(
         uploaded_documents_summary=uploaded_doc_payloads,
     )
 
+    bundle_preview = ""
+    try:
+        bundle_preview = Path(bundle_paths["bundle_md_path"]).read_text(encoding="utf-8")[:8000]
+    except Exception:
+        bundle_preview = ""
+
     return {
         "case_dir": str(case_dir),
         "snapshot_path": str(snapshot_path),
         "documents_dir": str(documents_dir),
         "uploaded_count": str(len(uploaded_file_paths)),
         **bundle_paths,
+        "bundle_md_preview": bundle_preview,
     }
 
 
@@ -97,6 +104,8 @@ def list_saved_cases(base_dir: str = "data/cases") -> list[dict[str, str]]:
                 "subject": str(subject),
                 "saved_at": str(saved_at),
                 "snapshot_path": str(snapshot_path),
+                "bundle_md_path": str(case_dir / "evidence_bundle.md"),
+                "bundle_json_path": str(case_dir / "bundle.json"),
             }
         )
     return cases
