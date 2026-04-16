@@ -15,7 +15,7 @@ from citizenship_search.app import (
     case_from_form,
     seed_case,
 )
-from citizenship_search.storage import save_case_snapshot
+from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot
 
 
 def _join_lines(values: list[str]) -> str:
@@ -52,6 +52,42 @@ def default_form_state() -> dict[str, str]:
         "translation_source": "Example Ukrainian note",
         "translation_language": "uk",
         "translation_text": "Narodzony w Stryju, ojciec: Mikolaj.",
+    }
+
+
+def form_state_from_snapshot(payload: dict) -> dict[str, str]:
+    case_file = payload.get("case_file", {})
+    subject = case_file.get("subject", {})
+    claims = case_file.get("claims", [])
+    translations = case_file.get("translations", [])
+    claims_text = "\n".join(
+        " | ".join(
+            [
+                str(claim.get("field_name", "")),
+                str(claim.get("value", "")),
+                str(claim.get("source_name", "")),
+                str(claim.get("source_type", "")),
+                str(claim.get("language", "")),
+                str(claim.get("confidence", "")),
+                str(claim.get("note", "")),
+            ]
+        ).strip()
+        for claim in claims
+    )
+    first_translation = translations[0] if translations else {}
+    return {
+        "query": str(payload.get("report", {}).get("query", "")),
+        "full_name": str(subject.get("full_name", "")),
+        "aliases": _join_lines(subject.get("aliases", [])),
+        "father_names": _join_lines(subject.get("father_name_variants", [])),
+        "birthplaces": _join_lines(subject.get("birthplace_variants", [])),
+        "occupations": _join_lines(subject.get("occupation_variants", [])),
+        "timeline_cues": _join_lines(subject.get("timeline_cues", [])),
+        "claims_text": claims_text,
+        "translation_source": str(first_translation.get("source_name", "")),
+        "translation_language": str(first_translation.get("original_language", "")),
+        "translation_text": str(first_translation.get("original_text", "")),
+        "selected_case_id": str(payload.get("saved_at", "")),
     }
 
 
@@ -166,11 +202,15 @@ def render_report_sections(report: dict) -> str:
     """
 
 
-def render_page(form: dict[str, str], report: dict | None = None, error: str = "") -> str:
+def render_page(form: dict[str, str], report: dict | None = None, error: str = "", saved_cases: list[dict[str, str]] | None = None) -> str:
     report_html = ""
     if report is not None:
         report_html = render_report_sections(report)
     error_html = f'<p class="error">{_esc(error)}</p>' if error else ""
+    saved_case_options = "".join(
+        f"<option value=\"{_esc(case['id'])}\">{_esc(case['saved_at'])} - {_esc(case['subject'])}</option>"
+        for case in (saved_cases or [])
+    )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -206,6 +246,14 @@ def render_page(form: dict[str, str], report: dict | None = None, error: str = "
     <div class="layout">
       <section class="card">
         <h2>Case Input</h2>
+        <form method="get">
+          <label for="load_case_id">Load saved case</label>
+          <select id="load_case_id" name="load_case_id">
+            <option value="">Choose a saved case</option>
+            {saved_case_options}
+          </select>
+          <button type="submit">Load saved case</button>
+        </form>
         <form method="post" enctype="multipart/form-data">
           <label for="query">Search query</label>
           <input id="query" name="query" value="{_esc(form['query'])}">
@@ -260,13 +308,27 @@ def render_page(form: dict[str, str], report: dict | None = None, error: str = "
 
 class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
+        saved_cases = list_saved_cases()
+        query = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "", keep_blank_values=True)
+        case_id = query.get("load_case_id", [""])[-1]
         form = default_form_state()
-        body = render_page(form)
+        report = None
+        if case_id:
+            try:
+                payload = load_case_snapshot(case_id)
+                form = {**form, **form_state_from_snapshot(payload)}
+                report = payload.get("report")
+            except Exception as exc:  # pragma: no cover
+                body = render_page(form, error=str(exc), saved_cases=saved_cases)
+                self._send_html(body, status=HTTPStatus.BAD_REQUEST)
+                return
+        body = render_page(form, report=report, saved_cases=saved_cases)
         self._send_html(body)
 
     def do_POST(self) -> None:  # noqa: N802
         data, uploaded_docs = self._parse_post_data()
         form = {**default_form_state(), **data}
+        saved_cases = list_saved_cases()
         try:
             case_file = case_from_form(
                 full_name=form["full_name"],
@@ -288,9 +350,9 @@ class AppHandler(BaseHTTPRequestHandler):
             report = build_discovery_report(case_file, form["query"])
             report["uploaded_documents"] = uploaded_summary
             report["storage"] = save_case_snapshot(case_file, report, uploaded_docs)
-            self._send_html(render_page(form, report=report))
+            self._send_html(render_page(form, report=report, saved_cases=saved_cases))
         except Exception as exc:  # pragma: no cover - defensive UI path
-            self._send_html(render_page(form, error=str(exc)), status=HTTPStatus.BAD_REQUEST)
+            self._send_html(render_page(form, error=str(exc), saved_cases=saved_cases), status=HTTPStatus.BAD_REQUEST)
 
     def log_message(self, format: str, *args: object) -> None:
         return

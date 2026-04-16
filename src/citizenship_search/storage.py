@@ -48,3 +48,35 @@ def save_case_snapshot(
         "documents_dir": str(documents_dir),
         "uploaded_count": str(len(uploaded_file_paths)),
     }
+
+
+def list_saved_cases(base_dir: str = "data/cases") -> list[dict[str, str]]:
+    base_path = Path(base_dir)
+    if not base_path.exists():
+        return []
+    cases: list[dict[str, str]] = []
+    for case_dir in sorted(base_path.iterdir(), reverse=True):
+        snapshot_path = case_dir / "case.json"
+        if not snapshot_path.exists():
+            continue
+        try:
+            payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            subject = payload.get("report", {}).get("subject") or payload.get("case_file", {}).get("subject", {}).get("full_name", case_dir.name)
+            saved_at = payload.get("saved_at", case_dir.name.split("-", 1)[0])
+        except json.JSONDecodeError:
+            subject = case_dir.name
+            saved_at = case_dir.name
+        cases.append(
+            {
+                "id": case_dir.name,
+                "subject": str(subject),
+                "saved_at": str(saved_at),
+                "snapshot_path": str(snapshot_path),
+            }
+        )
+    return cases
+
+
+def load_case_snapshot(case_id: str, base_dir: str = "data/cases") -> dict:
+    snapshot_path = Path(base_dir) / case_id / "case.json"
+    return json.loads(snapshot_path.read_text(encoding="utf-8"))
