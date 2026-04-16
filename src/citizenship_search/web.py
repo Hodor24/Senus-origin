@@ -15,7 +15,7 @@ from citizenship_search.app import (
     seed_case,
 )
 from citizenship_search.ingest import ingest_uploaded_file
-from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot
+from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot, update_bundle_markdown
 
 
 def _join_lines(values: list[str]) -> str:
@@ -87,7 +87,8 @@ def form_state_from_snapshot(payload: dict) -> dict[str, str]:
         "translation_source": str(first_translation.get("source_name", "")),
         "translation_language": str(first_translation.get("original_language", "")),
         "translation_text": str(first_translation.get("original_text", "")),
-        "selected_case_id": str(payload.get("saved_at", "")),
+        "selected_case_id": "",
+        "bundle_editor_text": "",
     }
 
 
@@ -279,7 +280,16 @@ def render_page(form: dict[str, str], report: dict | None = None, error: str = "
           </select>
           <button type="submit">Load saved case</button>
         </form>
+        <form method="post">
+          <input type="hidden" name="action" value="reexport_bundle">
+          <input type="hidden" name="selected_case_id" value="{_esc(form.get('selected_case_id', ''))}">
+          <label for="bundle_editor_text">Evidence bundle editor</label>
+          <textarea id="bundle_editor_text" name="bundle_editor_text">{_esc(form.get('bundle_editor_text', ''))}</textarea>
+          <p class="hint">Load a saved case, edit the bundle markdown here, then re-export it back to disk.</p>
+          <button type="submit">Re-export bundle</button>
+        </form>
         <form method="post" enctype="multipart/form-data">
+          <input type="hidden" name="action" value="generate_report">
           <label for="query">Search query</label>
           <input id="query" name="query" value="{_esc(form['query'])}">
 
@@ -361,6 +371,8 @@ class AppHandler(BaseHTTPRequestHandler):
                         "bundle_md_path": bundle_md_path,
                         "bundle_md_preview": bundle_preview[:8000],
                     }
+                form["selected_case_id"] = case_id
+                form["bundle_editor_text"] = bundle_preview
             except Exception as exc:  # pragma: no cover
                 body = render_page(form, error=str(exc), saved_cases=saved_cases)
                 self._send_html(body, status=HTTPStatus.BAD_REQUEST)
@@ -373,6 +385,24 @@ class AppHandler(BaseHTTPRequestHandler):
         form = {**default_form_state(), **data}
         saved_cases = list_saved_cases()
         try:
+            action = form.get("action", "generate_report")
+            if action == "reexport_bundle":
+                case_id = form.get("selected_case_id", "").strip()
+                if not case_id:
+                    raise ValueError("Select a saved case before re-exporting the bundle.")
+                storage = update_bundle_markdown(case_id, form.get("bundle_editor_text", ""))
+                payload = load_case_snapshot(case_id)
+                report = payload.get("report") if isinstance(payload, dict) else {}
+                if isinstance(report, dict):
+                    report["storage"] = {
+                        "case_dir": storage["case_dir"],
+                        "snapshot_path": f"{storage['case_dir']}/case.json",
+                        "bundle_md_path": storage["bundle_md_path"],
+                        "bundle_md_preview": storage["bundle_md_preview"],
+                    }
+                self._send_html(render_page(form, report=report, saved_cases=saved_cases))
+                return
+
             case_file = case_from_form(
                 full_name=form["full_name"],
                 aliases=form["aliases"],
@@ -393,6 +423,7 @@ class AppHandler(BaseHTTPRequestHandler):
             report = build_discovery_report(case_file, form["query"])
             report["uploaded_documents"] = uploaded_summary
             report["storage"] = save_case_snapshot(case_file, report, uploaded_docs)
+            form["bundle_editor_text"] = str(report["storage"].get("bundle_md_preview", ""))
             self._send_html(render_page(form, report=report, saved_cases=saved_cases))
         except Exception as exc:  # pragma: no cover - defensive UI path
             self._send_html(render_page(form, error=str(exc), saved_cases=saved_cases), status=HTTPStatus.BAD_REQUEST)

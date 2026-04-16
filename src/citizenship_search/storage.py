@@ -114,3 +114,14 @@ def list_saved_cases(base_dir: str = "data/cases") -> list[dict[str, str]]:
 def load_case_snapshot(case_id: str, base_dir: str = "data/cases") -> dict:
     snapshot_path = Path(base_dir) / case_id / "case.json"
     return json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+
+def update_bundle_markdown(case_id: str, markdown_text: str, base_dir: str = "data/cases") -> dict[str, str]:
+    case_dir = Path(base_dir) / case_id
+    bundle_md_path = case_dir / "evidence_bundle.md"
+    bundle_md_path.write_text(markdown_text, encoding="utf-8")
+    return {
+        "case_dir": str(case_dir),
+        "bundle_md_path": str(bundle_md_path),
+        "bundle_md_preview": markdown_text[:8000],
+    }

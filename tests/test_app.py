@@ -8,7 +8,7 @@ from citizenship_search.app import (
     seed_case,
 )
 from citizenship_search.ingest import ingest_uploaded_file
-from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot
+from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot, update_bundle_markdown
 
 
 def test_seed_case_has_core_claims() -> None:
@@ -110,3 +110,14 @@ def test_list_and_load_saved_case_snapshot(tmp_path) -> None:
     case_id = Path(result["case_dir"]).name
     payload = load_case_snapshot(case_id, base_dir=str(tmp_path))
     assert payload["report"]["subject"] == "Roman Senus"
+
+
+def test_update_bundle_markdown_overwrites_bundle(tmp_path) -> None:
+    case_file = seed_case()
+    report = build_discovery_report(case_file, "Roman Senus Stryj 1957")
+    result = save_case_snapshot(case_file, report, uploaded_docs=[], base_dir=str(tmp_path))
+    case_id = Path(result["case_dir"]).name
+    updated = update_bundle_markdown(case_id, "# Edited Bundle\n\nCustom note.", base_dir=str(tmp_path))
+    text = Path(updated["bundle_md_path"]).read_text(encoding="utf-8")
+    assert "Edited Bundle" in text
+    assert "Custom note." in text
