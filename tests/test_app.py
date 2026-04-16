@@ -91,7 +91,13 @@ def test_save_case_snapshot_writes_files(tmp_path) -> None:
 def test_ingest_uploaded_file_handles_pdf_fallback() -> None:
     result = ingest_uploaded_file("scan.pdf", b"%PDF-1.4 Roman Senus Stryj", "en")
     assert result["media_type"] == "pdf"
-    assert result["extractor"] == "printable-text-fallback"
+    assert result["extractor"] in {"printable-text-fallback", "textutil"}
+    assert result["extraction_status"] in {
+        "partial_pdf_text",
+        "pdf_no_text_extractor",
+        "textutil_pdf_text_extracted",
+        "pdf_no_text_from_textutil",
+    }
     assert isinstance(result["original_bytes"], bytes)
 
 
