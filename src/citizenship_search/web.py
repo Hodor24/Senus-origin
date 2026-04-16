@@ -17,7 +17,9 @@ from citizenship_search.app import (
 )
 from citizenship_search.ingest import ingest_uploaded_file
 from citizenship_search.storage import (
+    accept_all_draft_extracted_claims,
     accept_draft_extracted_claims,
+    reject_all_draft_extracted_claims,
     list_saved_cases,
     load_case_snapshot,
     save_case_snapshot,
@@ -237,6 +239,23 @@ def render_report_sections(report: dict) -> str:
         </form>
         """
 
+        accept_all_form_html = f"""
+        <form method="post">
+          <input type="hidden" name="action" value="accept_all_draft_claims">
+          <input type="hidden" name="selected_case_id" value="{_esc(case_id)}">
+          <button type="submit" style="margin-top: 10px; background: #16a34a;">Accept all drafts</button>
+        </form>
+        """
+
+        reject_all_form_html = f"""
+        <form method="post">
+          <input type="hidden" name="action" value="reject_all_draft_claims">
+          <input type="hidden" name="selected_case_id" value="{_esc(case_id)}">
+          <button type="submit" style="margin-top: 10px; background: #b91c1c;">Reject all drafts</button>
+        </form>
+        """
+        accept_form_html = accept_form_html + accept_all_form_html + reject_all_form_html
+
     return f"""
     <section class="card">
       <h2>Discovery Summary</h2>
@@ -452,6 +471,40 @@ class AppHandler(BaseHTTPRequestHandler):
                     accepted_indices=accepted_indices,
                     draft_claims=draft_claims,
                 )
+                report = result.get("report", {})
+                report["storage"] = {
+                    "case_dir": result.get("case_dir", ""),
+                    "snapshot_path": result.get("snapshot_path", ""),
+                    "bundle_md_path": result.get("bundle_md_path", ""),
+                    "bundle_md_preview": result.get("bundle_md_preview", ""),
+                }
+                form["selected_case_id"] = case_id
+                form["bundle_editor_text"] = str(result.get("bundle_md_preview", ""))
+                self._send_html(render_page(form, report=report, saved_cases=saved_cases))
+                return
+
+            if action == "accept_all_draft_claims":
+                case_id = str(form.get("selected_case_id", "")).strip()
+                if not case_id:
+                    raise ValueError("Select a saved case before accepting all drafts.")
+                result = accept_all_draft_extracted_claims(case_id=case_id)
+                report = result.get("report", {})
+                report["storage"] = {
+                    "case_dir": result.get("case_dir", ""),
+                    "snapshot_path": result.get("snapshot_path", ""),
+                    "bundle_md_path": result.get("bundle_md_path", ""),
+                    "bundle_md_preview": result.get("bundle_md_preview", ""),
+                }
+                form["selected_case_id"] = case_id
+                form["bundle_editor_text"] = str(result.get("bundle_md_preview", ""))
+                self._send_html(render_page(form, report=report, saved_cases=saved_cases))
+                return
+
+            if action == "reject_all_draft_claims":
+                case_id = str(form.get("selected_case_id", "")).strip()
+                if not case_id:
+                    raise ValueError("Select a saved case before rejecting drafts.")
+                result = reject_all_draft_extracted_claims(case_id=case_id)
                 report = result.get("report", {})
                 report["storage"] = {
                     "case_dir": result.get("case_dir", ""),

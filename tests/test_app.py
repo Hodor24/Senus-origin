@@ -10,10 +10,12 @@ from citizenship_search.app import (
 from citizenship_search.extract_claims import extract_claims_from_text
 from citizenship_search.ingest import ingest_uploaded_file
 from citizenship_search.storage import (
+    accept_all_draft_extracted_claims,
     accept_draft_extracted_claims,
     list_saved_cases,
     load_case_snapshot,
     save_case_snapshot,
+    reject_all_draft_extracted_claims,
     update_bundle_markdown,
 )
 
@@ -168,6 +170,48 @@ def test_accept_draft_extracted_claims_updates_snapshot(tmp_path) -> None:
     assert any(
         c.get("field_name") == "father_name" and c.get("value") == "Michal" for c in case_payload.get("claims", [])
     )
+
+
+def test_accept_all_draft_extracted_claims_updates_snapshot(tmp_path) -> None:
+    case_file = seed_case()
+    report = build_discovery_report(case_file, "Roman Senus Stryj 1957")
+    report["uploaded_documents"] = []
+    draft_claims = [
+        {
+            "field_name": "father_name",
+            "value": "Michal",
+            "source_name": "Extracted text",
+            "source_type": "extracted",
+            "language": "en",
+            "confidence": "0.65",
+            "note": "Auto-extracted",
+        }
+    ]
+    report["extracted_claims"] = draft_claims
+    result = save_case_snapshot(case_file, report, uploaded_docs=[], base_dir=str(tmp_path))
+    case_id = Path(result["case_dir"]).name
+
+    accept_all_draft_extracted_claims(case_id=case_id, base_dir=str(tmp_path))
+    payload = load_case_snapshot(case_id, base_dir=str(tmp_path))
+    case_payload = payload["case_file"]
+    assert any(
+        c.get("field_name") == "father_name" and c.get("value") == "Michal" for c in case_payload.get("claims", [])
+    )
+
+
+def test_reject_all_draft_extracted_claims_clears_snapshot(tmp_path) -> None:
+    case_file = seed_case()
+    report = build_discovery_report(case_file, "Roman Senus Stryj 1957")
+    report["uploaded_documents"] = []
+    report["extracted_claims"] = [
+        {"field_name": "father_name", "value": "Michal", "source_name": "Extracted text"}
+    ]
+    result = save_case_snapshot(case_file, report, uploaded_docs=[], base_dir=str(tmp_path))
+    case_id = Path(result["case_dir"]).name
+
+    reject_all_draft_extracted_claims(case_id=case_id, base_dir=str(tmp_path))
+    payload = load_case_snapshot(case_id, base_dir=str(tmp_path))
+    assert payload["report"]["extracted_claims"] == []
 
 
 def test_extract_claims_from_text_finds_core_fields() -> None:

@@ -230,6 +230,45 @@ def accept_draft_extracted_claims(
     }
 
 
+def accept_all_draft_extracted_claims(case_id: str, base_dir: str = "data/cases") -> dict[str, object]:
+    snapshot_path = Path(base_dir) / case_id / "case.json"
+    payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    report_dict = payload.get("report", {}) if isinstance(payload, dict) else {}
+    draft_claims = report_dict.get("extracted_claims", []) if isinstance(report_dict, dict) else []
+    accepted_indices = list(range(len(draft_claims)))
+    return accept_draft_extracted_claims(
+        case_id=case_id,
+        accepted_indices=accepted_indices,
+        draft_claims=draft_claims,
+        base_dir=base_dir,
+    )
+
+
+def reject_all_draft_extracted_claims(case_id: str, base_dir: str = "data/cases") -> dict[str, object]:
+    case_dir = Path(base_dir) / case_id
+    snapshot_path = case_dir / "case.json"
+    payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("report"), dict):
+        payload["report"]["extracted_claims"] = []
+    snapshot_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    bundle_md_path = case_dir / "evidence_bundle.md"
+    bundle_preview = ""
+    if bundle_md_path.exists():
+        try:
+            bundle_preview = bundle_md_path.read_text(encoding="utf-8")[:8000]
+        except Exception:
+            bundle_preview = ""
+
+    return {
+        "case_dir": str(case_dir),
+        "snapshot_path": str(snapshot_path),
+        "bundle_md_path": str(bundle_md_path),
+        "bundle_md_preview": bundle_preview,
+        "report": payload.get("report", {}),
+    }
+
+
 def update_bundle_markdown(case_id: str, markdown_text: str, base_dir: str = "data/cases") -> dict[str, str]:
     case_dir = Path(base_dir) / case_id
     bundle_md_path = case_dir / "evidence_bundle.md"
