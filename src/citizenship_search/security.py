@@ -29,7 +29,7 @@ def decrypt_data(cipher_text_b64: str, key: str) -> bytes:
     return _xor_cipher(encrypted, key_bytes)
 
 
-@dataclass(slots=True)
+@dataclass
 class AccessControl:
     user_roles: dict[str, str] = field(default_factory=dict)
 
@@ -40,7 +40,7 @@ class AccessControl:
         return self.user_roles.get(user_id) in {"owner", "researcher"}
 
 
-@dataclass(slots=True)
+@dataclass
 class AuditLog:
     entries: list[dict[str, Any]] = field(default_factory=list)
     secret: str = "audit-secret"

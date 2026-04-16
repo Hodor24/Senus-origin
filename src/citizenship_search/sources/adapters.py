@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from citizenship_search.sources.base import SourceHit
 
 
-@dataclass(slots=True)
+@dataclass
 class StaticAdapter:
     name: str
     jurisdiction: str

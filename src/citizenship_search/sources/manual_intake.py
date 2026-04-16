@@ -5,7 +5,7 @@ from datetime import date
 from uuid import uuid4
 
 
-@dataclass(slots=True)
+@dataclass
 class ArchiveRequest:
     request_id: str
     repository_name: str

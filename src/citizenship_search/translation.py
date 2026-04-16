@@ -9,7 +9,7 @@ def _now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
-@dataclass(slots=True)
+@dataclass
 class TranslationRecord:
     document_id: str
     original_language: str

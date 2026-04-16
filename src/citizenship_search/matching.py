@@ -17,7 +17,7 @@ WEIGHTS = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class RankedCandidate:
     hit: SourceHit
     score: float

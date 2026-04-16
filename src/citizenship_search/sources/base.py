@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
-@dataclass(slots=True)
+@dataclass
 class SourceHit:
     source_name: str
     title: str
