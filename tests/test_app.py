@@ -79,6 +79,11 @@ def test_save_case_snapshot_writes_files(tmp_path) -> None:
     )
     assert Path(result["snapshot_path"]).exists()
     assert Path(result["documents_dir"], "record.txt").exists()
+    assert Path(result["bundle_md_path"]).exists()
+    assert Path(result["bundle_json_path"]).exists()
+    md = Path(result["bundle_md_path"]).read_text(encoding="utf-8")
+    assert "Evidence Bundle" in md
+    assert "Roman Senus" in md
 
 
 def test_ingest_uploaded_file_handles_pdf_fallback() -> None:

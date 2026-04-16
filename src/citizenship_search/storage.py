@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from citizenship_search.models import CaseFile
+from citizenship_search.export_bundle import write_evidence_bundle_files
 
 
 def _slugify(value: str) -> str:
@@ -58,11 +59,19 @@ def save_case_snapshot(
     snapshot_path = case_dir / "case.json"
     snapshot_path.write_text(json.dumps(case_payload, indent=2), encoding="utf-8")
 
+    bundle_paths = write_evidence_bundle_files(
+        case_dir=case_dir,
+        case_file=case_file,
+        report=report,
+        uploaded_documents_summary=uploaded_doc_payloads,
+    )
+
     return {
         "case_dir": str(case_dir),
         "snapshot_path": str(snapshot_path),
         "documents_dir": str(documents_dir),
         "uploaded_count": str(len(uploaded_file_paths)),
+        **bundle_paths,
     }
 
 

@@ -196,6 +196,7 @@ def render_report_sections(report: dict) -> str:
       <p><strong>Query:</strong> {_esc(str(report.get("query", "")))}</p>
       <p><strong>Saved case:</strong> {_esc(str(storage.get("case_dir", "Not saved yet")))}</p>
       <p><strong>Snapshot file:</strong> {_esc(str(storage.get("snapshot_path", "Not saved yet")))}</p>
+      <p><strong>Evidence bundle:</strong> {_esc(str(storage.get("bundle_md_path", "Not generated yet")))}</p>
       <h3>Query Hits</h3>
       <p><strong>Aliases:</strong></p>
       {_render_list([str(item) for item in query_hits.get("aliases", [])])}
