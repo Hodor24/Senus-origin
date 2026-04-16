@@ -1,0 +1,1 @@
+"""Citizenship search app package."""
