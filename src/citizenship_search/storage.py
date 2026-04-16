@@ -16,7 +16,7 @@ def _slugify(value: str) -> str:
 def save_case_snapshot(
     case_file: CaseFile,
     report: dict,
-    uploaded_docs: list[dict[str, str]],
+    uploaded_docs: list[dict[str, object]],
     base_dir: str = "data/cases",
 ) -> dict[str, str]:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -26,18 +26,34 @@ def save_case_snapshot(
     documents_dir.mkdir(parents=True, exist_ok=True)
 
     uploaded_file_paths: list[str] = []
+    uploaded_doc_payloads: list[dict[str, str]] = []
     for item in uploaded_docs:
-        filename = item.get("filename", "uploaded.txt")
-        text = item.get("text", "")
+        filename = str(item.get("filename", "uploaded.txt"))
+        text = str(item.get("text", ""))
+        original_bytes = item.get("original_bytes")
         doc_path = documents_dir / filename
-        doc_path.write_text(text, encoding="utf-8")
+        if isinstance(original_bytes, bytes):
+            doc_path.write_bytes(original_bytes)
+        else:
+            doc_path.write_text(text, encoding="utf-8")
         uploaded_file_paths.append(str(doc_path))
+        uploaded_doc_payloads.append(
+            {
+                "filename": filename,
+                "source_name": str(item.get("source_name", "")),
+                "language": str(item.get("language", "")),
+                "media_type": str(item.get("media_type", "")),
+                "extractor": str(item.get("extractor", "")),
+                "extraction_status": str(item.get("extraction_status", "")),
+                "text": text,
+            }
+        )
 
     case_payload = {
         "saved_at": timestamp,
         "case_file": case_file.as_dict(),
         "report": report,
-        "uploaded_documents": uploaded_docs,
+        "uploaded_documents": uploaded_doc_payloads,
     }
     snapshot_path = case_dir / "case.json"
     snapshot_path.write_text(json.dumps(case_payload, indent=2), encoding="utf-8")

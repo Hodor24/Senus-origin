@@ -7,6 +7,7 @@ from citizenship_search.app import (
     case_from_form,
     seed_case,
 )
+from citizenship_search.ingest import ingest_uploaded_file
 from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot
 
 
@@ -59,12 +60,7 @@ def test_uploaded_documents_create_claims_and_translations() -> None:
     summary = apply_uploaded_documents(
         case_file,
         [
-            {
-                "filename": "record-ua.txt",
-                "source_name": "Uploaded file: record-ua.txt",
-                "language": "uk",
-                "text": "Narodzony w Stryju",
-            }
+            ingest_uploaded_file("record-ua.txt", "Narodzony w Stryju".encode("utf-8"), "uk", "Uploaded file: record-ua.txt")
         ],
     )
     assert summary
@@ -83,6 +79,19 @@ def test_save_case_snapshot_writes_files(tmp_path) -> None:
     )
     assert Path(result["snapshot_path"]).exists()
     assert Path(result["documents_dir"], "record.txt").exists()
+
+
+def test_ingest_uploaded_file_handles_pdf_fallback() -> None:
+    result = ingest_uploaded_file("scan.pdf", b"%PDF-1.4 Roman Senus Stryj", "en")
+    assert result["media_type"] == "pdf"
+    assert result["extractor"] == "printable-text-fallback"
+    assert isinstance(result["original_bytes"], bytes)
+
+
+def test_ingest_uploaded_file_marks_image_without_ocr() -> None:
+    result = ingest_uploaded_file("photo.jpg", b"\xff\xd8\xff", "pl")
+    assert result["media_type"] == "image"
+    assert result["extraction_status"] == "image_saved_ocr_unavailable"
 
 
 def test_list_and_load_saved_case_snapshot(tmp_path) -> None:

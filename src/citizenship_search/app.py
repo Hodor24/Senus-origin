@@ -92,9 +92,36 @@ def apply_uploaded_documents(case_file: CaseFile, uploaded_docs: list[dict[str, 
     for item in uploaded_docs:
         filename = item.get("filename", "uploaded.txt")
         language = item.get("language", "unknown")
-        text = item.get("text", "")
+        text = str(item.get("text", ""))
         source_name = item.get("source_name", f"Uploaded file: {filename}")
+        media_type = str(item.get("media_type", "binary"))
+        extractor = str(item.get("extractor", "none"))
+        extraction_status = str(item.get("extraction_status", "stored_only"))
         if not text.strip():
+            if media_type == "image":
+                case_file.claims.append(
+                    EvidenceClaim(
+                        field_name="uploaded_document",
+                        value=filename,
+                        source_name=source_name,
+                        source_type="upload",
+                        language=language,
+                        confidence=0.4,
+                        note=f"{media_type}; {extraction_status}",
+                    )
+                )
+                summaries.append(
+                    {
+                        "filename": filename,
+                        "source_name": source_name,
+                        "language": language,
+                        "media_type": media_type,
+                        "extractor": extractor,
+                        "extraction_status": extraction_status,
+                        "size_chars": "0",
+                        "preview": "",
+                    }
+                )
             continue
         case_file.claims.append(
             EvidenceClaim(
@@ -104,7 +131,7 @@ def apply_uploaded_documents(case_file: CaseFile, uploaded_docs: list[dict[str, 
                 source_type="upload",
                 language=language,
                 confidence=0.5,
-                note="User uploaded source text",
+                note=f"{media_type}; {extraction_status}",
             )
         )
         if language.lower() != "en":
@@ -114,6 +141,9 @@ def apply_uploaded_documents(case_file: CaseFile, uploaded_docs: list[dict[str, 
                 "filename": filename,
                 "source_name": source_name,
                 "language": language,
+                "media_type": media_type,
+                "extractor": extractor,
+                "extraction_status": extraction_status,
                 "size_chars": str(len(text)),
                 "preview": text[:120].replace("\n", " "),
             }

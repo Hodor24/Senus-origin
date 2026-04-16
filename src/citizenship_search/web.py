@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import cgi
 import html
-import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
@@ -15,6 +14,7 @@ from citizenship_search.app import (
     case_from_form,
     seed_case,
 )
+from citizenship_search.ingest import ingest_uploaded_file
 from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot
 
 
@@ -112,6 +112,24 @@ def _render_table(headers: list[str], rows: list[list[str]]) -> str:
     return f"<table><thead><tr>{head_html}</tr></thead><tbody>{body_html}</tbody></table>"
 
 
+def render_saved_cases_panel(saved_cases: list[dict[str, str]], selected_case_id: str = "") -> str:
+    rows = [
+        [
+            case["saved_at"],
+            case["subject"],
+            case["id"],
+            "Loaded" if case["id"] == selected_case_id else "",
+        ]
+        for case in saved_cases
+    ]
+    return f"""
+    <section class="card">
+      <h2>Saved Case History</h2>
+      {_render_table(["Saved At", "Subject", "Case ID", "Status"], rows)}
+    </section>
+    """
+
+
 def render_report_sections(report: dict) -> str:
     query_hits = report.get("query_hits", {})
     claims = report.get("claims", [])
@@ -144,6 +162,9 @@ def render_report_sections(report: dict) -> str:
         [
             str(item.get("filename", "")),
             str(item.get("language", "")),
+            str(item.get("media_type", "")),
+            str(item.get("extractor", "")),
+            str(item.get("extraction_status", "")),
             str(item.get("size_chars", "")),
             str(item.get("source_name", "")),
             str(item.get("preview", "")),
@@ -191,7 +212,7 @@ def render_report_sections(report: dict) -> str:
       {_render_table(["Field", "Values", "Sources"], conflict_rows)}
 
       <h3>Uploaded Documents</h3>
-      {_render_table(["Filename", "Language", "Chars", "Source", "Preview"], upload_rows)}
+      {_render_table(["Filename", "Language", "Type", "Extractor", "Status", "Chars", "Source", "Preview"], upload_rows)}
 
       <h3>Translations</h3>
       {_render_table(["Source", "Language", "Original (preview)", "English (preview)"], translation_rows)}
@@ -208,9 +229,10 @@ def render_page(form: dict[str, str], report: dict | None = None, error: str = "
         report_html = render_report_sections(report)
     error_html = f'<p class="error">{_esc(error)}</p>' if error else ""
     saved_case_options = "".join(
-        f"<option value=\"{_esc(case['id'])}\">{_esc(case['saved_at'])} - {_esc(case['subject'])}</option>"
+        f"<option value=\"{_esc(case['id'])}\"{' selected' if case['id'] == form.get('selected_case_id', '') else ''}>{_esc(case['saved_at'])} - {_esc(case['subject'])}</option>"
         for case in (saved_cases or [])
     )
+    saved_cases_html = render_saved_cases_panel(saved_cases or [], form.get("selected_case_id", ""))
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -297,6 +319,7 @@ def render_page(form: dict[str, str], report: dict | None = None, error: str = "
         </form>
       </section>
       <section>
+        {saved_cases_html}
         {report_html}
       </section>
     </div>
@@ -384,15 +407,13 @@ class AppHandler(BaseHTTPRequestHandler):
                 fields = field if isinstance(field, list) else [field]
                 for item in fields:
                     if getattr(item, "filename", None):
-                        file_bytes = item.file.read() if item.file else b""
-                        file_text = file_bytes.decode("utf-8", errors="replace")
                         uploaded_docs.append(
-                            {
-                                "filename": item.filename or "uploaded.txt",
-                                "source_name": f"Uploaded file: {item.filename or 'uploaded.txt'}",
-                                "language": (form.getvalue("translation_language") or "unknown").strip() or "unknown",
-                                "text": file_text,
-                            }
+                            ingest_uploaded_file(
+                                filename=item.filename or "uploaded.txt",
+                                file_bytes=item.file.read() if item.file else b"",
+                                language=(form.getvalue("translation_language") or "unknown").strip() or "unknown",
+                                source_name=f"Uploaded file: {item.filename or 'uploaded.txt'}",
+                            )
                         )
                     else:
                         data[key] = str(item.value or "")
