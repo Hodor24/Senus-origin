@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import asdict
 from typing import Any
 
+from citizenship_search.extract_claims import extract_claims_from_text
 from citizenship_search.models import CaseFile, EvidenceClaim, SubjectProfile, TranslationCopy
 from citizenship_search.normalize import expand_name_aliases, expand_place_aliases
 
@@ -136,6 +137,7 @@ def apply_uploaded_documents(case_file: CaseFile, uploaded_docs: list[dict[str, 
         )
         if language.lower() != "en":
             attach_translation(case_file=case_file, source_name=source_name, text=text, original_language=language)
+        extracted_claims = extract_claims_from_text(text=text, source_name=source_name, language=language)
         summaries.append(
             {
                 "filename": filename,
@@ -146,6 +148,7 @@ def apply_uploaded_documents(case_file: CaseFile, uploaded_docs: list[dict[str, 
                 "extraction_status": extraction_status,
                 "size_chars": str(len(text)),
                 "preview": text[:120].replace("\n", " "),
+                "extracted_claims": extracted_claims,
             }
         )
     return summaries

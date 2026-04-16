@@ -140,6 +140,7 @@ def render_report_sections(report: dict) -> str:
     archive_requests = report.get("archive_requests", [])
     storage = report.get("storage", {})
     bundle_preview = storage.get("bundle_md_preview", "")
+    extracted_claims = report.get("extracted_claims", [])
 
     claims_rows = [
         [
@@ -190,6 +191,16 @@ def render_report_sections(report: dict) -> str:
         ]
         for item in archive_requests
     ]
+    extracted_rows = [
+        [
+            str(item.get("field_name", "")),
+            str(item.get("value", "")),
+            str(item.get("source_name", "")),
+            str(item.get("confidence", "")),
+            str(item.get("note", "")),
+        ]
+        for item in extracted_claims
+    ]
 
     return f"""
     <section class="card">
@@ -223,6 +234,9 @@ def render_report_sections(report: dict) -> str:
 
       <h3>Archive Requests</h3>
       {_render_table(["Repository", "Focus", "Priority"], archive_rows)}
+
+      <h3>Draft Extracted Claims</h3>
+      {_render_table(["Field", "Value", "Source", "Confidence", "Note"], extracted_rows)}
     </section>
     """
 
@@ -422,6 +436,11 @@ class AppHandler(BaseHTTPRequestHandler):
             uploaded_summary = apply_uploaded_documents(case_file, uploaded_docs)
             report = build_discovery_report(case_file, form["query"])
             report["uploaded_documents"] = uploaded_summary
+            report["extracted_claims"] = [
+                claim
+                for item in uploaded_summary
+                for claim in item.get("extracted_claims", [])
+            ]
             report["storage"] = save_case_snapshot(case_file, report, uploaded_docs)
             form["bundle_editor_text"] = str(report["storage"].get("bundle_md_preview", ""))
             self._send_html(render_page(form, report=report, saved_cases=saved_cases))

@@ -7,6 +7,7 @@ from citizenship_search.app import (
     case_from_form,
     seed_case,
 )
+from citizenship_search.extract_claims import extract_claims_from_text
 from citizenship_search.ingest import ingest_uploaded_file
 from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot, update_bundle_markdown
 
@@ -66,6 +67,7 @@ def test_uploaded_documents_create_claims_and_translations() -> None:
     assert summary
     assert any(claim.field_name == "uploaded_document" for claim in case_file.claims)
     assert case_file.translations
+    assert summary[0]["extracted_claims"]
 
 
 def test_save_case_snapshot_writes_files(tmp_path) -> None:
@@ -127,3 +129,17 @@ def test_update_bundle_markdown_overwrites_bundle(tmp_path) -> None:
     text = Path(updated["bundle_md_path"]).read_text(encoding="utf-8")
     assert "Edited Bundle" in text
     assert "Custom note." in text
+
+
+def test_extract_claims_from_text_finds_core_fields() -> None:
+    claims = extract_claims_from_text(
+        text="Born in Stryj. Father name Michal. Migrated in 1957. Occupation painter. Army service recorded.",
+        source_name="Test source",
+        language="en",
+    )
+    fields = {claim["field_name"] for claim in claims}
+    assert "birthplace" in fields
+    assert "father_name" in fields
+    assert "migration_year" in fields
+    assert "occupation" in fields
+    assert "military_service" in fields
