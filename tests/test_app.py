@@ -1,4 +1,10 @@
-from citizenship_search.app import attach_translation, build_discovery_report, case_from_form, seed_case
+from citizenship_search.app import (
+    apply_uploaded_documents,
+    attach_translation,
+    build_discovery_report,
+    case_from_form,
+    seed_case,
+)
 
 
 def test_seed_case_has_core_claims() -> None:
@@ -43,3 +49,21 @@ def test_case_from_form_parses_claims() -> None:
     assert case_file.subject.full_name == "Roman Senus"
     assert case_file.claims[0].field_name == "father_name"
     assert case_file.claims[0].confidence == 0.8
+
+
+def test_uploaded_documents_create_claims_and_translations() -> None:
+    case_file = seed_case()
+    summary = apply_uploaded_documents(
+        case_file,
+        [
+            {
+                "filename": "record-ua.txt",
+                "source_name": "Uploaded file: record-ua.txt",
+                "language": "uk",
+                "text": "Narodzony w Stryju",
+            }
+        ],
+    )
+    assert summary
+    assert any(claim.field_name == "uploaded_document" for claim in case_file.claims)
+    assert case_file.translations

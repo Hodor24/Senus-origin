@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import cgi
 import html
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
-from citizenship_search.app import attach_translation, build_discovery_report, case_from_form, seed_case
+from citizenship_search.app import (
+    apply_uploaded_documents,
+    attach_translation,
+    build_discovery_report,
+    case_from_form,
+    seed_case,
+)
 
 
 def _join_lines(values: list[str]) -> str:
@@ -51,15 +58,114 @@ def _esc(value: str) -> str:
     return html.escape(value, quote=True)
 
 
+def _render_list(items: list[str]) -> str:
+    if not items:
+        return "<p class='hint'>None</p>"
+    return "<ul>" + "".join(f"<li>{_esc(item)}</li>" for item in items) + "</ul>"
+
+
+def _render_table(headers: list[str], rows: list[list[str]]) -> str:
+    if not rows:
+        return "<p class='hint'>None</p>"
+    head_html = "".join(f"<th>{_esc(h)}</th>" for h in headers)
+    body_html = "".join(
+        "<tr>" + "".join(f"<td>{_esc(cell)}</td>" for cell in row) + "</tr>"
+        for row in rows
+    )
+    return f"<table><thead><tr>{head_html}</tr></thead><tbody>{body_html}</tbody></table>"
+
+
+def render_report_sections(report: dict) -> str:
+    query_hits = report.get("query_hits", {})
+    claims = report.get("claims", [])
+    conflicts = report.get("conflicts", [])
+    uploads = report.get("uploaded_documents", [])
+    translations = report.get("translations", [])
+    archive_requests = report.get("archive_requests", [])
+
+    claims_rows = [
+        [
+            str(item.get("field_name", "")),
+            str(item.get("value", "")),
+            str(item.get("source_name", "")),
+            str(item.get("source_type", "")),
+            str(item.get("language", "")),
+            str(item.get("confidence", "")),
+        ]
+        for item in claims
+    ]
+    conflict_rows = [
+        [
+            str(item.get("field", "")),
+            ", ".join(item.get("values", [])),
+            ", ".join(item.get("sources", [])),
+        ]
+        for item in conflicts
+    ]
+    upload_rows = [
+        [
+            str(item.get("filename", "")),
+            str(item.get("language", "")),
+            str(item.get("size_chars", "")),
+            str(item.get("source_name", "")),
+            str(item.get("preview", "")),
+        ]
+        for item in uploads
+    ]
+    translation_rows = [
+        [
+            str(item.get("source_name", "")),
+            str(item.get("original_language", "")),
+            str(item.get("original_text", ""))[:100],
+            str(item.get("english_text", ""))[:100],
+        ]
+        for item in translations
+    ]
+    archive_rows = [
+        [
+            str(item.get("repository", "")),
+            str(item.get("request_focus", "")),
+            str(item.get("priority", "")),
+        ]
+        for item in archive_requests
+    ]
+
+    return f"""
+    <section class="card">
+      <h2>Discovery Summary</h2>
+      <p><strong>Subject:</strong> {_esc(str(report.get("subject", "")))}</p>
+      <p><strong>Query:</strong> {_esc(str(report.get("query", "")))}</p>
+      <h3>Query Hits</h3>
+      <p><strong>Aliases:</strong></p>
+      {_render_list([str(item) for item in query_hits.get("aliases", [])])}
+      <p><strong>Places:</strong></p>
+      {_render_list([str(item) for item in query_hits.get("places", [])])}
+
+      <h3>Father Name Alias Pool</h3>
+      {_render_list([str(item) for item in report.get("father_name_alias_pool", [])])}
+
+      <h3>Claims</h3>
+      {_render_table(["Field", "Value", "Source", "Type", "Lang", "Confidence"], claims_rows)}
+
+      <h3>Conflicts</h3>
+      {_render_table(["Field", "Values", "Sources"], conflict_rows)}
+
+      <h3>Uploaded Documents</h3>
+      {_render_table(["Filename", "Language", "Chars", "Source", "Preview"], upload_rows)}
+
+      <h3>Translations</h3>
+      {_render_table(["Source", "Language", "Original (preview)", "English (preview)"], translation_rows)}
+
+      <h3>Archive Requests</h3>
+      {_render_table(["Repository", "Focus", "Priority"], archive_rows)}
+    </section>
+    """
+
+
 def render_page(form: dict[str, str], report: dict | None = None, error: str = "") -> str:
     report_html = ""
     if report is not None:
-        report_html = f"""
-        <section class="card">
-          <h2>Discovery Summary</h2>
-          <pre>{_esc(json.dumps(report, indent=2))}</pre>
-        </section>
-        """
+        report_html = render_report_sections(report)
     error_html = f'<p class="error">{_esc(error)}</p>' if error else ""
     return f"""<!doctype html>
 <html lang="en">
@@ -80,7 +186,11 @@ def render_page(form: dict[str, str], report: dict | None = None, error: str = "
     button:hover {{ background: #1d4ed8; }}
     .hint {{ color: #475569; font-size: 0.95rem; }}
     .error {{ color: #b91c1c; font-weight: 600; }}
-    pre {{ white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow: auto; }}
+    table {{ width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 0.93rem; }}
+    th, td {{ border: 1px solid #e2e8f0; padding: 8px; text-align: left; vertical-align: top; }}
+    th {{ background: #f8fafc; }}
+    ul {{ margin: 8px 0 16px 20px; padding: 0; }}
+    h3 {{ margin-bottom: 8px; margin-top: 22px; }}
     @media (max-width: 900px) {{ .layout {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
@@ -92,7 +202,7 @@ def render_page(form: dict[str, str], report: dict | None = None, error: str = "
     <div class="layout">
       <section class="card">
         <h2>Case Input</h2>
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
           <label for="query">Search query</label>
           <input id="query" name="query" value="{_esc(form['query'])}">
 
@@ -127,6 +237,10 @@ def render_page(form: dict[str, str], report: dict | None = None, error: str = "
           <label for="translation_text">Original non-English text</label>
           <textarea id="translation_text" name="translation_text">{_esc(form['translation_text'])}</textarea>
 
+          <label for="uploaded_documents">Upload document text files (.txt, .md, .csv)</label>
+          <input id="uploaded_documents" name="uploaded_documents" type="file" multiple>
+          <p class="hint">Uploaded files are parsed as text and added as source evidence. Non-English files are copied to translation records.</p>
+
           <button type="submit">Generate discovery summary</button>
         </form>
       </section>
@@ -147,9 +261,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self._send_html(body)
 
     def do_POST(self) -> None:  # noqa: N802
-        length = int(self.headers.get("Content-Length", "0"))
-        payload = self.rfile.read(length).decode("utf-8")
-        data = {key: values[-1] for key, values in parse_qs(payload, keep_blank_values=True).items()}
+        data, uploaded_docs = self._parse_post_data()
         form = {**default_form_state(), **data}
         try:
             case_file = case_from_form(
@@ -168,7 +280,9 @@ class AppHandler(BaseHTTPRequestHandler):
                     text=form["translation_text"],
                     original_language=form["translation_language"].strip() or "unknown",
                 )
+            uploaded_summary = apply_uploaded_documents(case_file, uploaded_docs)
             report = build_discovery_report(case_file, form["query"])
+            report["uploaded_documents"] = uploaded_summary
             self._send_html(render_page(form, report=report))
         except Exception as exc:  # pragma: no cover - defensive UI path
             self._send_html(render_page(form, error=str(exc)), status=HTTPStatus.BAD_REQUEST)
@@ -183,6 +297,44 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body_bytes)))
         self.end_headers()
         self.wfile.write(body_bytes)
+
+    def _parse_post_data(self) -> tuple[dict[str, str], list[dict[str, str]]]:
+        content_type, _ = cgi.parse_header(self.headers.get("Content-Type", ""))
+        if content_type == "multipart/form-data":
+            form = cgi.FieldStorage(
+                fp=self.rfile,
+                headers=self.headers,
+                environ={
+                    "REQUEST_METHOD": "POST",
+                    "CONTENT_TYPE": self.headers.get("Content-Type", ""),
+                    "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
+                },
+            )
+            data: dict[str, str] = {}
+            uploaded_docs: list[dict[str, str]] = []
+            for key in form.keys():
+                field = form[key]
+                fields = field if isinstance(field, list) else [field]
+                for item in fields:
+                    if getattr(item, "filename", None):
+                        file_bytes = item.file.read() if item.file else b""
+                        file_text = file_bytes.decode("utf-8", errors="replace")
+                        uploaded_docs.append(
+                            {
+                                "filename": item.filename or "uploaded.txt",
+                                "source_name": f"Uploaded file: {item.filename or 'uploaded.txt'}",
+                                "language": (form.getvalue("translation_language") or "unknown").strip() or "unknown",
+                                "text": file_text,
+                            }
+                        )
+                    else:
+                        data[key] = str(item.value or "")
+            return data, uploaded_docs
+
+        length = int(self.headers.get("Content-Length", "0"))
+        payload = self.rfile.read(length).decode("utf-8")
+        data = {key: values[-1] for key, values in parse_qs(payload, keep_blank_values=True).items()}
+        return data, []
 
 
 def main() -> None:

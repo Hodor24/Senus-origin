@@ -87,6 +87,40 @@ def attach_translation(case_file: CaseFile, source_name: str, text: str, origina
     )
 
 
+def apply_uploaded_documents(case_file: CaseFile, uploaded_docs: list[dict[str, str]]) -> list[dict[str, str]]:
+    summaries: list[dict[str, str]] = []
+    for item in uploaded_docs:
+        filename = item.get("filename", "uploaded.txt")
+        language = item.get("language", "unknown")
+        text = item.get("text", "")
+        source_name = item.get("source_name", f"Uploaded file: {filename}")
+        if not text.strip():
+            continue
+        case_file.claims.append(
+            EvidenceClaim(
+                field_name="uploaded_document",
+                value=filename,
+                source_name=source_name,
+                source_type="upload",
+                language=language,
+                confidence=0.5,
+                note="User uploaded source text",
+            )
+        )
+        if language.lower() != "en":
+            attach_translation(case_file=case_file, source_name=source_name, text=text, original_language=language)
+        summaries.append(
+            {
+                "filename": filename,
+                "source_name": source_name,
+                "language": language,
+                "size_chars": str(len(text)),
+                "preview": text[:120].replace("\n", " "),
+            }
+        )
+    return summaries
+
+
 def build_discovery_report(case_file: CaseFile, query: str) -> dict[str, Any]:
     query_l = query.lower()
     alias_hits = [alias for alias in case_file.subject.aliases if alias.lower() in query_l]
