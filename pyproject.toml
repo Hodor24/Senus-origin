@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 citizenship-search = "citizenship_search.cli:main"
+citizenship-search-web = "citizenship_search.web:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

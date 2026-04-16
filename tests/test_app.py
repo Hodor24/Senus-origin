@@ -1,4 +1,4 @@
-from citizenship_search.app import attach_translation, build_discovery_report, seed_case
+from citizenship_search.app import attach_translation, build_discovery_report, case_from_form, seed_case
 
 
 def test_seed_case_has_core_claims() -> None:
@@ -28,3 +28,18 @@ def test_translation_is_preserved_with_original() -> None:
     assert report["translations"]
     assert report["translations"][0]["original_text"] == "Ojciec: Mikolaj"
     assert report["translations"][0]["english_text"].startswith("[EN translation]")
+
+
+def test_case_from_form_parses_claims() -> None:
+    case_file = case_from_form(
+        full_name="Roman Senus",
+        aliases="Roman Senus",
+        father_names="Michal\nMikolaj",
+        birthplaces="Poland\nStryj",
+        occupations="Painter",
+        timeline_cues="1957",
+        claims_text="father_name | Michal | Marriage certificate | civil | en | 0.8 | primary civil record",
+    )
+    assert case_file.subject.full_name == "Roman Senus"
+    assert case_file.claims[0].field_name == "father_name"
+    assert case_file.claims[0].confidence == 0.8

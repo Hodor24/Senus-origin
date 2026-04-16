@@ -29,6 +29,52 @@ def seed_case() -> CaseFile:
     return CaseFile(subject=subject, claims=claims, translations=[])
 
 
+def _split_multiline(value: str) -> list[str]:
+    return [item.strip() for item in value.replace(",", "\n").splitlines() if item.strip()]
+
+
+def case_from_form(
+    full_name: str,
+    aliases: str,
+    father_names: str,
+    birthplaces: str,
+    occupations: str,
+    timeline_cues: str,
+    claims_text: str,
+) -> CaseFile:
+    subject = SubjectProfile(
+        full_name=full_name.strip() or "Unknown subject",
+        aliases=_split_multiline(aliases) or [full_name.strip() or "Unknown subject"],
+        father_name_variants=_split_multiline(father_names),
+        birthplace_variants=_split_multiline(birthplaces),
+        occupation_variants=_split_multiline(occupations),
+        timeline_cues=_split_multiline(timeline_cues),
+    )
+    claims: list[EvidenceClaim] = []
+    for line in claims_text.splitlines():
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) < 6:
+            continue
+        field_name, value, source_name, source_type, language, confidence = parts[:6]
+        note = parts[6] if len(parts) > 6 else ""
+        try:
+            score = float(confidence)
+        except ValueError:
+            score = 0.5
+        claims.append(
+            EvidenceClaim(
+                field_name=field_name,
+                value=value,
+                source_name=source_name,
+                source_type=source_type,
+                language=language,
+                confidence=score,
+                note=note,
+            )
+        )
+    return CaseFile(subject=subject, claims=claims, translations=[])
+
+
 def attach_translation(case_file: CaseFile, source_name: str, text: str, original_language: str) -> None:
     english = f"[EN translation] {text}"
     case_file.translations.append(

@@ -17,6 +17,15 @@ cd /Users/paulevans/Projects/citizenship-search-app
 PYTHONPATH=src python3 -m citizenship_search.cli --query "Roman Senus Stryj 1957"
 ```
 
+## Run the local web app
+
+```bash
+cd /Users/paulevans/Projects/citizenship-search-app
+PYTHONPATH=src python3 -m citizenship_search.web
+```
+
+Then open `http://127.0.0.1:8000` in your browser.
+
 ## Run tests
 
 ```bash
