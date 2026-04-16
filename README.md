@@ -1,27 +1,30 @@
-# Citizenship Search App
+# Citizenship Search App (Restart)
 
-Discovery-first app for family-tree evidence gathering focused on Polish citizenship research.
+Clean restart of the discovery-first research app, rebuilt with a simpler architecture and GitHub-first workflow.
 
-## What it includes
+## What this version does
 
-- Case and claim schema with provenance and conflict tracking.
-- Multilingual normalization/transliteration helpers for Polish/Ukrainian/Russian variants.
-- Source adapter framework for UK, Poland, Ukraine, Russia, and Polish Armed Forces in the West data channels.
-- Manual archive request template and tracking primitives.
-- Candidate scoring and contradiction reconciliation.
-- Export-ready outputs: timeline, discovery report, missing-doc packet, and citizenship bundle draft.
-- Translation pipeline that preserves originals and records translation metadata + source hash.
-- Security primitives for encrypted storage, role checks, and tamper-evident audit log chains.
+- Stores one investigation case with person aliases and evidence claims.
+- Tracks conflicting facts (for example, father name variants).
+- Produces a discovery report and archive request checklist.
+- Keeps non-English source text and an English translation copy side-by-side.
+- Preserves source provenance for each claim.
 
-## Run locally
+## Quick start
 
 ```bash
-python -m pip install -e .
-python -m pytest
-citizenship-search --query "Roman Senus Stryj 1957"
+cd /Users/paulevans/Projects/citizenship-search-app
+PYTHONPATH=src python3 -m citizenship_search.cli --query "Roman Senus Stryj 1957"
 ```
 
-## Notes
+## Run tests
 
-- Current adapters are static/demo connectors and should be replaced with live integrations and request workflows.
-- This project supports research operations and is not legal advice.
+```bash
+cd /Users/paulevans/Projects/citizenship-search-app
+PYTHONPATH=src python3 -m pytest -q
+```
+
+## Important
+
+- This tool supports archival research workflows.
+- It does not provide legal advice.

@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "citizenship-search-app"
-version = "0.1.0"
-description = "Discovery-first family search app for Polish citizenship evidence gathering."
+version = "0.2.0"
+description = "Restarted discovery-first family search app for Polish citizenship research."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = []
 
 [project.scripts]
