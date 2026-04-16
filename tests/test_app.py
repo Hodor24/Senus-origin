@@ -9,7 +9,13 @@ from citizenship_search.app import (
 )
 from citizenship_search.extract_claims import extract_claims_from_text
 from citizenship_search.ingest import ingest_uploaded_file
-from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot, update_bundle_markdown
+from citizenship_search.storage import (
+    accept_draft_extracted_claims,
+    list_saved_cases,
+    load_case_snapshot,
+    save_case_snapshot,
+    update_bundle_markdown,
+)
 
 
 def test_seed_case_has_core_claims() -> None:
@@ -129,6 +135,39 @@ def test_update_bundle_markdown_overwrites_bundle(tmp_path) -> None:
     text = Path(updated["bundle_md_path"]).read_text(encoding="utf-8")
     assert "Edited Bundle" in text
     assert "Custom note." in text
+
+
+def test_accept_draft_extracted_claims_updates_snapshot(tmp_path) -> None:
+    case_file = seed_case()
+    report = build_discovery_report(case_file, "Roman Senus Stryj 1957")
+    # Ensure required keys exist for the accept logic.
+    report["uploaded_documents"] = []
+    result = save_case_snapshot(case_file, report, uploaded_docs=[], base_dir=str(tmp_path))
+    case_id = Path(result["case_dir"]).name
+
+    draft_claims = [
+        {
+            "field_name": "father_name",
+            "value": "Michal",
+            "source_name": "Extracted text",
+            "source_type": "extracted",
+            "language": "en",
+            "confidence": "0.65",
+            "note": "Auto-extracted",
+        }
+    ]
+    updated = accept_draft_extracted_claims(
+        case_id=case_id,
+        accepted_indices=[0],
+        draft_claims=draft_claims,
+        base_dir=str(tmp_path),
+    )
+    assert updated["bundle_md_path"]
+    payload = load_case_snapshot(case_id, base_dir=str(tmp_path))
+    case_payload = payload["case_file"]
+    assert any(
+        c.get("field_name") == "father_name" and c.get("value") == "Michal" for c in case_payload.get("claims", [])
+    )
 
 
 def test_extract_claims_from_text_finds_core_fields() -> None:
