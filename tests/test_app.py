@@ -12,6 +12,7 @@ from citizenship_search.ingest import ingest_uploaded_file
 from citizenship_search.storage import (
     accept_all_draft_extracted_claims,
     accept_draft_extracted_claims,
+    accept_safe_draft_extracted_claims,
     list_saved_cases,
     load_case_snapshot,
     save_case_snapshot,
@@ -212,6 +213,48 @@ def test_reject_all_draft_extracted_claims_clears_snapshot(tmp_path) -> None:
     reject_all_draft_extracted_claims(case_id=case_id, base_dir=str(tmp_path))
     payload = load_case_snapshot(case_id, base_dir=str(tmp_path))
     assert payload["report"]["extracted_claims"] == []
+
+
+def test_accept_safe_draft_extracted_claims_filters_by_confidence(tmp_path) -> None:
+    case_file = seed_case()
+    report = build_discovery_report(case_file, "Roman Senus Stryj 1957")
+    report["uploaded_documents"] = []
+    report["extracted_claims"] = [
+        {
+            "field_name": "father_name",
+            "value": "LowConfFather",
+            "source_name": "Extracted text",
+            "source_type": "extracted",
+            "language": "en",
+            "confidence": "0.2",
+            "note": "",
+        },
+        {
+            "field_name": "father_name",
+            "value": "HighConfFather",
+            "source_name": "Extracted text",
+            "source_type": "extracted",
+            "language": "en",
+            "confidence": "0.9",
+            "note": "",
+        },
+    ]
+    result = save_case_snapshot(case_file, report, uploaded_docs=[], base_dir=str(tmp_path))
+    case_id = Path(result["case_dir"]).name
+
+    updated = accept_safe_draft_extracted_claims(
+        case_id=case_id,
+        draft_claims=report["extracted_claims"],
+        min_confidence=0.6,
+        base_dir=str(tmp_path),
+    )
+    assert updated["bundle_md_path"]
+
+    payload = load_case_snapshot(case_id, base_dir=str(tmp_path))
+    case_payload = payload["case_file"]
+    values = [c.get("value") for c in case_payload.get("claims", []) if c.get("field_name") == "father_name"]
+    assert "HighConfFather" in values
+    assert "LowConfFather" not in values
 
 
 def test_extract_claims_from_text_finds_core_fields() -> None:

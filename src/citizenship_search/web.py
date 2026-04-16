@@ -19,6 +19,7 @@ from citizenship_search.ingest import ingest_uploaded_file
 from citizenship_search.storage import (
     accept_all_draft_extracted_claims,
     accept_draft_extracted_claims,
+    accept_safe_draft_extracted_claims,
     reject_all_draft_extracted_claims,
     list_saved_cases,
     load_case_snapshot,
@@ -254,7 +255,19 @@ def render_report_sections(report: dict) -> str:
           <button type="submit" style="margin-top: 10px; background: #b91c1c;">Reject all drafts</button>
         </form>
         """
-        accept_form_html = accept_form_html + accept_all_form_html + reject_all_form_html
+
+        accept_safe_form_html = f"""
+        <form method="post">
+          <input type="hidden" name="action" value="accept_safe_draft_claims">
+          <input type="hidden" name="selected_case_id" value="{_esc(case_id)}">
+          <input type="hidden" name="draft_claims_json" value="{_esc(draft_claims_json)}">
+          <label for="min_confidence">Minimum confidence</label>
+          <input id="min_confidence" name="min_confidence" type="text" value="0.6" style="width: 120px; margin-right: 8px;">
+          <button type="submit" style="margin-top: 10px; background: #0ea5e9;">Accept safe drafts</button>
+        </form>
+        """
+
+        accept_form_html = accept_form_html + accept_all_form_html + reject_all_form_html + accept_safe_form_html
 
     return f"""
     <section class="card">
@@ -531,6 +544,38 @@ class AppHandler(BaseHTTPRequestHandler):
                         "bundle_md_path": storage["bundle_md_path"],
                         "bundle_md_preview": storage["bundle_md_preview"],
                     }
+                self._send_html(render_page(form, report=report, saved_cases=saved_cases))
+                return
+
+            if action == "accept_safe_draft_claims":
+                case_id = str(form.get("selected_case_id", "")).strip()
+                if not case_id:
+                    raise ValueError("Select a saved case before accepting safe drafts.")
+                draft_claims_json = str(form.get("draft_claims_json", "[]"))
+                draft_claims = json.loads(draft_claims_json) if draft_claims_json else []
+                min_conf = form.get("min_confidence", "0.6")
+                try:
+                    min_confidence = float(min_conf)
+                except (TypeError, ValueError):
+                    min_confidence = 0.6
+
+                if not draft_claims:
+                    raise ValueError("No draft claims found to accept.")
+
+                result = accept_safe_draft_extracted_claims(
+                    case_id=case_id,
+                    draft_claims=draft_claims,
+                    min_confidence=min_confidence,
+                )
+                report = result.get("report", {})
+                report["storage"] = {
+                    "case_dir": result.get("case_dir", ""),
+                    "snapshot_path": result.get("snapshot_path", ""),
+                    "bundle_md_path": result.get("bundle_md_path", ""),
+                    "bundle_md_preview": result.get("bundle_md_preview", ""),
+                }
+                form["selected_case_id"] = case_id
+                form["bundle_editor_text"] = str(result.get("bundle_md_preview", ""))
                 self._send_html(render_page(form, report=report, saved_cases=saved_cases))
                 return
 

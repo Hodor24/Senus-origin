@@ -269,6 +269,32 @@ def reject_all_draft_extracted_claims(case_id: str, base_dir: str = "data/cases"
     }
 
 
+def accept_safe_draft_extracted_claims(
+    case_id: str,
+    draft_claims: list[dict],
+    min_confidence: float,
+    base_dir: str = "data/cases",
+) -> dict[str, object]:
+    accepted_indices: list[int] = []
+    for i, dc in enumerate(draft_claims):
+        try:
+            conf = float(dc.get("confidence", 0))
+        except (TypeError, ValueError):
+            conf = 0.0
+        if conf >= min_confidence:
+            accepted_indices.append(i)
+
+    if not accepted_indices:
+        raise ValueError(f"No draft claims meet min_confidence={min_confidence}.")
+
+    return accept_draft_extracted_claims(
+        case_id=case_id,
+        accepted_indices=accepted_indices,
+        draft_claims=draft_claims,
+        base_dir=base_dir,
+    )
+
+
 def update_bundle_markdown(case_id: str, markdown_text: str, base_dir: str = "data/cases") -> dict[str, str]:
     case_dir = Path(base_dir) / case_id
     bundle_md_path = case_dir / "evidence_bundle.md"
