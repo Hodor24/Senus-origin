@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import cgi
 import html
+import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
@@ -15,7 +16,13 @@ from citizenship_search.app import (
     seed_case,
 )
 from citizenship_search.ingest import ingest_uploaded_file
-from citizenship_search.storage import list_saved_cases, load_case_snapshot, save_case_snapshot, update_bundle_markdown
+from citizenship_search.storage import (
+    accept_draft_extracted_claims,
+    list_saved_cases,
+    load_case_snapshot,
+    save_case_snapshot,
+    update_bundle_markdown,
+)
 
 
 def _join_lines(values: list[str]) -> str:
@@ -191,16 +198,44 @@ def render_report_sections(report: dict) -> str:
         ]
         for item in archive_requests
     ]
-    extracted_rows = [
-        [
-            str(item.get("field_name", "")),
-            str(item.get("value", "")),
-            str(item.get("source_name", "")),
-            str(item.get("confidence", "")),
-            str(item.get("note", "")),
-        ]
-        for item in extracted_claims
-    ]
+    case_id = ""
+    try:
+        storage_case_dir = str(storage.get("case_dir", ""))
+        if storage_case_dir:
+            case_id = storage_case_dir.rstrip("/").split("/")[-1]
+    except Exception:
+        case_id = ""
+    draft_claims_json = json.dumps(extracted_claims, ensure_ascii=False)
+    accept_form_html = ""
+    if extracted_claims:
+        accept_rows_html = "".join(
+            f"<tr>"
+            f"<td><input type='checkbox' name='accepted_draft_indices' value='{i}'></td>"
+            f"<td>{_esc(str(item.get('field_name', '')))}</td>"
+            f"<td>{_esc(str(item.get('value', '')))}</td>"
+            f"<td>{_esc(str(item.get('source_name', '')))}</td>"
+            f"<td>{_esc(str(item.get('confidence', '')))}</td>"
+            f"<td>{_esc(str(item.get('note', '')))}</td>"
+            f"</tr>"
+            for i, item in enumerate(extracted_claims)
+        )
+        accept_form_html = f"""
+        <form method="post">
+          <input type="hidden" name="action" value="accept_draft_claims">
+          <input type="hidden" name="selected_case_id" value="{_esc(case_id)}">
+          <input type="hidden" name="draft_claims_json" value="{_esc(draft_claims_json)}">
+          <h3>Draft Extracted Claims</h3>
+          <table><thead><tr>
+            <th>Accept</th>
+            <th>Field</th>
+            <th>Value</th>
+            <th>Source</th>
+            <th>Confidence</th>
+            <th>Note</th>
+          </tr></thead><tbody>{accept_rows_html}</tbody></table>
+          <button type="submit" style="margin-top: 12px;">Accept selected claims</button>
+        </form>
+        """
 
     return f"""
     <section class="card">
@@ -234,9 +269,7 @@ def render_report_sections(report: dict) -> str:
 
       <h3>Archive Requests</h3>
       {_render_table(["Repository", "Focus", "Priority"], archive_rows)}
-
-      <h3>Draft Extracted Claims</h3>
-      {_render_table(["Field", "Value", "Source", "Confidence", "Note"], extracted_rows)}
+      {accept_form_html}
     </section>
     """
 
@@ -400,6 +433,37 @@ class AppHandler(BaseHTTPRequestHandler):
         saved_cases = list_saved_cases()
         try:
             action = form.get("action", "generate_report")
+            if action == "accept_draft_claims":
+                case_id = str(form.get("selected_case_id", "")).strip()
+                if not case_id:
+                    raise ValueError("No selected case for accepting draft claims.")
+                draft_claims_json = str(form.get("draft_claims_json", "[]"))
+                draft_claims = json.loads(draft_claims_json) if draft_claims_json else []
+                accepted = form.get("accepted_draft_indices", [])
+                if isinstance(accepted, str):
+                    accepted_indices = [int(x) for x in accepted.split(",") if x.strip()]
+                else:
+                    accepted_indices = [int(x) for x in list(accepted)]
+                if not accepted_indices:
+                    raise ValueError("Select at least one draft extracted claim to accept.")
+
+                result = accept_draft_extracted_claims(
+                    case_id=case_id,
+                    accepted_indices=accepted_indices,
+                    draft_claims=draft_claims,
+                )
+                report = result.get("report", {})
+                report["storage"] = {
+                    "case_dir": result.get("case_dir", ""),
+                    "snapshot_path": result.get("snapshot_path", ""),
+                    "bundle_md_path": result.get("bundle_md_path", ""),
+                    "bundle_md_preview": result.get("bundle_md_preview", ""),
+                }
+                form["selected_case_id"] = case_id
+                form["bundle_editor_text"] = str(result.get("bundle_md_preview", ""))
+                self._send_html(render_page(form, report=report, saved_cases=saved_cases))
+                return
+
             if action == "reexport_bundle":
                 case_id = form.get("selected_case_id", "").strip()
                 if not case_id:
@@ -443,6 +507,10 @@ class AppHandler(BaseHTTPRequestHandler):
             ]
             report["storage"] = save_case_snapshot(case_file, report, uploaded_docs)
             form["bundle_editor_text"] = str(report["storage"].get("bundle_md_preview", ""))
+            try:
+                form["selected_case_id"] = str(report["storage"].get("case_dir", "")).rstrip("/").split("/")[-1]
+            except Exception:
+                form["selected_case_id"] = ""
             self._send_html(render_page(form, report=report, saved_cases=saved_cases))
         except Exception as exc:  # pragma: no cover - defensive UI path
             self._send_html(render_page(form, error=str(exc), saved_cases=saved_cases), status=HTTPStatus.BAD_REQUEST)
@@ -458,7 +526,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body_bytes)
 
-    def _parse_post_data(self) -> tuple[dict[str, str], list[dict[str, str]]]:
+    def _parse_post_data(self) -> tuple[dict[str, object], list[dict[str, object]]]:
         content_type, _ = cgi.parse_header(self.headers.get("Content-Type", ""))
         if content_type == "multipart/form-data":
             form = cgi.FieldStorage(
@@ -470,7 +538,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
                 },
             )
-            data: dict[str, str] = {}
+            data: dict[str, object] = {}
             uploaded_docs: list[dict[str, str]] = []
             for key in form.keys():
                 field = form[key]
@@ -486,7 +554,15 @@ class AppHandler(BaseHTTPRequestHandler):
                             )
                         )
                     else:
-                        data[key] = str(item.value or "")
+                        value = str(item.value or "")
+                        if key not in data:
+                            data[key] = value
+                        else:
+                            existing = data[key]
+                            if isinstance(existing, list):
+                                existing.append(value)
+                            else:
+                                data[key] = [existing, value]
             return data, uploaded_docs
 
         length = int(self.headers.get("Content-Length", "0"))
